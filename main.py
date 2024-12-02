@@ -38,8 +38,8 @@ def build_hash_index(file_path, struct_format, hash_table_size):
                 break
             unpacked_data = struct.unpack(struct_format, record)
             endereco = unpacked_data[0] 
-            id_produto = unpacked_data[1]  
-            hash_table.insert(id_produto, endereco) 
+            id_categoria = unpacked_data[3]  
+            hash_table.insert(id_categoria, endereco) 
     
     print("Índice Hash construído em %s segundos" % (time.time() - start_time))
     return hash_table
@@ -112,7 +112,7 @@ class BTree:
         child.keys = child.keys[:order - 1]
         child.pointers = child.pointers[:order]
 
-def build_b_tree_in_chunks(file_path, order, struct_format, chunk_size):
+def build_b_tree(file_path, order, struct_format, chunk_size):
     start_time = time.time()
     b_tree = BTree(order)
     
@@ -122,9 +122,9 @@ def build_b_tree_in_chunks(file_path, order, struct_format, chunk_size):
             record = file.read(record_size)
             if len(record) < record_size:
                 break
-                unpacked_data = struct.unpack(struct_format, record)
-                key, pointer = unpacked_data[1], unpacked_data[0]
-                b_tree.insert(key, pointer)
+            unpacked_data = struct.unpack(struct_format, record)
+            key, pointer = unpacked_data[1], unpacked_data[0]
+            b_tree.insert(key, pointer)
     
     print(f"Árvore B construída em {time.time() - start_time} segundos")
     return b_tree
@@ -197,7 +197,7 @@ while(True):
     print("0 - Sair")
     opcao = int(input("Digite a opção desejada: "))
     if opcao == 1:
-        b_tree = build_b_tree_in_chunks(FILE_PATH, ORDER, STRUCT_FORMAT, CHUNK_SIZE)
+        b_tree = build_b_tree(FILE_PATH, ORDER, STRUCT_FORMAT, CHUNK_SIZE)
         print("Árvore B construída com sucesso!")
     elif opcao == 2:
         start_time = time.time()
@@ -213,7 +213,7 @@ while(True):
         hash_index = build_hash_index(FILE_PATH, STRUCT_FORMAT, 5000001)
     elif opcao == 4:
         start_time = time.time()
-        id_to_search = int(input("Digite o id do produto: "))
+        id_to_search = int(input("Digite o id da categoria: "))
         result = search_hash_index(hash_index, id_to_search)
         if result is not None:
             print(f"Chave {id_to_search} encontrada no índice {result}.")
@@ -222,6 +222,7 @@ while(True):
         print(f"Operação de busca realizada em {time.time() - start_time} segundos")
     elif opcao == 5:
         add_entry()
+        b_tree = build_b_tree(FILE_PATH, ORDER, STRUCT_FORMAT, CHUNK_SIZE)
         hash_index = build_hash_index(FILE_PATH, STRUCT_FORMAT, 5000001)
     elif opcao == 0:
         break
