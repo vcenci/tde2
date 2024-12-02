@@ -1,4 +1,52 @@
 import struct
+import time
+import os
+
+FILE_PATH = r'products.bin'
+STRUCT_FORMAT = 'QQ20sQd20sc'
+ORDER = 4  # Ordem da Árvore B
+CHUNK_SIZE = 5000000 
+
+class HashTable:
+    def __init__(self, size):
+        self.size = size
+        self.table = [[] for _ in range(size)]
+    
+    def _hash_function(self, key):
+        return hash(key) % self.size
+    
+    def insert(self, key, value):
+        index = self._hash_function(key)
+        self.table[index].append((key, value))
+    
+    def search(self, key):
+        index = self._hash_function(key)
+        for k, v in self.table[index]:
+            if k == key:
+                return v
+        return None
+
+def build_hash_index(file_path, struct_format, hash_table_size):
+    start_time = time.time()
+    hash_table = HashTable(hash_table_size)
+    record_size = struct.calcsize(struct_format)
+    
+    with open(file_path, 'rb') as file:
+        while True:
+            record = file.read(record_size)
+            if len(record) < record_size:
+                break
+            unpacked_data = struct.unpack(struct_format, record)
+            endereco = unpacked_data[0] 
+            id_produto = unpacked_data[1]  
+            hash_table.insert(id_produto, endereco) 
+    
+    print("Índice Hash construído em %s segundos" % (time.time() - start_time))
+    return hash_table
+
+def search_hash_index(hash_table, id_produto):
+    endereco = hash_table.search(id_produto)
+    return endereco
 
 class BTreeNode:
     def __init__(self, is_leaf=False):
@@ -12,21 +60,19 @@ class BTree:
         self.order = order
     
     def search(self, key):
+        start_time = time.time()
         current_node = self.root
         while not current_node.is_leaf:
             idx = 0
-            # Procurar a posição correta no nó
             while idx < len(current_node.keys) and key > current_node.keys[idx]:
                 idx += 1
-            # Descer para o nó filho
             current_node = current_node.pointers[idx]
         
-        # Agora estamos em um nó folha
         try:
-            idx = current_node.keys.index(key)
-            return current_node.pointers[idx]  # Retorna o ponteiro associado
+            idx = current_node.keys.index(key)            
+            return current_node.pointers[idx]
         except ValueError:
-            return None  # Chave não encontrada
+            return None
 
     def insert(self, key, pointer):
         root = self.root
@@ -66,76 +112,116 @@ class BTree:
         child.keys = child.keys[:order - 1]
         child.pointers = child.pointers[:order]
 
-def load_indices_from_struct_in_chunks(file_path, struct_format, chunk_size):
-    indices = []
-    record_size = struct.calcsize(struct_format)
-    with open(file_path, 'rb') as file:
-        while True:
-            chunk = file.read(chunk_size * record_size)
-            if not chunk:
-                break
-            for i in range(0, len(chunk), record_size):
-                record = chunk[i:i+record_size]
-                if len(record) < record_size:
-                    break
-                unpacked_data = struct.unpack(struct_format, record)
-                indices.append((unpacked_data[0], unpacked_data[1]))  # Apenas os dois primeiros campos
-    return indices
-
 def build_b_tree_in_chunks(file_path, order, struct_format, chunk_size):
-    # Criar a Árvore B
+    start_time = time.time()
     b_tree = BTree(order)
     
-    # Processar o arquivo em blocos
     record_size = struct.calcsize(struct_format)
-    with open(file_path, 'rb') as file:
-        while True:
-            chunk = file.read(chunk_size * record_size)
-            if not chunk:
-                break
-            print(f"Lendo {chunk_size} de registros e inserindo na árvore.")
-            for i in range(0, len(chunk), record_size):
-                record = chunk[i:i+record_size]
-                if len(record) < record_size:
-                    break
-                unpacked_data = struct.unpack(struct_format, record)
-                key, pointer = unpacked_data[1], unpacked_data[0]
-                b_tree.insert(key, pointer)
-    
-    return b_tree
-
-def build_hash_index(file_path, struct_format, column_index, hash_table_size):
-    """Constrói uma tabela hash para uma coluna específica do arquivo binário."""
-    hash_table = HashTable(hash_table_size)
-    record_size = struct.calcsize(struct_format)
-    
     with open(file_path, 'rb') as file:
         while True:
             record = file.read(record_size)
             if len(record) < record_size:
                 break
-            unpacked_data = struct.unpack(struct_format, record)
-            key = unpacked_data[column_index]  # Coluna usada como chave
-            value = unpacked_data[1]  # ID do produto (ou outro identificador)
-            hash_table.insert(key, value)
+                unpacked_data = struct.unpack(struct_format, record)
+                key, pointer = unpacked_data[1], unpacked_data[0]
+                b_tree.insert(key, pointer)
     
-    return hash_table
+    print(f"Árvore B construída em {time.time() - start_time} segundos")
+    return b_tree
+   
+def add_entry():
+    struct = [
+        0,
+        int(input("Digite o id do produto: ")),
+        input("Digite a marca do produto: ").ljust(20, " ").encode('utf-8')[:20],
+        int(input("Digite o id da categoria do produto: ")),
+        float(input("Digite o preço do produto: ")),
+        input("Digite o tipo do evento: ").ljust(20, " ").encode('utf-8')[:20], 
+        "N".encode('utf-8')[:1]
+    ]
+    
+    start_time = time.time() 
+    print("Inserindo no arquivo de dados")
+    insert_to_file(tuple(struct), STRUCT_FORMAT, FILE_PATH, False)
+    print(f"Dado inserido em {time.time() - start_time} segundos")
 
-# Configurações e execução
-FILE_PATH = r'D:\Arquivo\products.bin'  # Ajustar caminho conforme necessário
-STRUCT_FORMAT = 'QQ20sQd20sc'  # Novo formato do arquivo
-ORDER = 4  # Ordem da Árvore B
-CHUNK_SIZE = 5000000  # Número de registros por bloco
+def insert_to_file(struct_data, struct_format, filepath, found):
+    with open(filepath, 'r+b') as file:
+        entry_size = struct.calcsize(struct_format)  
+        offset = struct_data[0] * entry_size
+        print(f'Produto será inserido na chave {struct_data[0]} offset {offset}')
 
-b_tree = build_b_tree_in_chunks(FILE_PATH, ORDER, STRUCT_FORMAT, CHUNK_SIZE)
-print("Árvore B construída com sucesso!")
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
 
+        bytes_to_shift = file_size - offset
 
-# Buscar uma chave na Árvore B
-key_to_search = 17200506  # Substitua pela chave que deseja buscar
-result = b_tree.search(key_to_search)
+        current_position = offset
+        while bytes_to_shift > 0:
+            read_size = min(CHUNK_SIZE, bytes_to_shift)
+            file.seek(current_position) 
+            data_to_shift = file.read(read_size) 
 
-if result is not None:
-    print(f"Chave {key_to_search} encontrada no índice {result}.")
-else:
-    print(f"Chave {key_to_search} não encontrada.")
+            file.seek(current_position + entry_size) 
+
+            file.write(data_to_shift)
+
+            current_position += read_size
+            bytes_to_shift -= read_size
+        
+        for i in range(struct_data[0] + 1, (file_size // entry_size) + 1):
+            file.seek(i * entry_size)
+            record = file.read(entry_size)
+
+            if len(record) < entry_size:
+                break 
+
+            unpacked = list(struct.unpack(struct_format, record))
+            unpacked[0] += 1 
+                
+            file.seek(i * entry_size)
+            file.write(struct.pack(struct_format, *unpacked))
+        
+        file.seek(offset) 
+
+        file.write(struct.pack(struct_format, *struct_data))
+
+    file.close()
+
+while(True):
+    print("1 - Construir a Árvore B")
+    print("2 - Buscar uma chave na Árvore B")
+    print("3 - Construir o Índice Hash")
+    print("4 - Buscar uma chave no Índice Hash")
+    print("5 - Adicionar produto")
+    print("0 - Sair")
+    opcao = int(input("Digite a opção desejada: "))
+    if opcao == 1:
+        b_tree = build_b_tree_in_chunks(FILE_PATH, ORDER, STRUCT_FORMAT, CHUNK_SIZE)
+        print("Árvore B construída com sucesso!")
+    elif opcao == 2:
+        start_time = time.time()
+        id_to_search = int(input("Digite o id do produto: "))
+        result = b_tree.search(id_to_search)
+        if result is not None:
+            
+            print(f"Chave {id_to_search} encontrada no índice {result}.")
+        else:
+            print(f"Chave {id_to_search} não encontrada.")
+        print(f"Operação de busca realizada em {time.time() - start_time} segundos")
+    elif opcao == 3:
+        hash_index = build_hash_index(FILE_PATH, STRUCT_FORMAT, 5000001)
+    elif opcao == 4:
+        start_time = time.time()
+        id_to_search = int(input("Digite o id do produto: "))
+        result = search_hash_index(hash_index, id_to_search)
+        if result is not None:
+            print(f"Chave {id_to_search} encontrada no índice {result}.")
+        else:
+            print(f"Chave {id_to_search} não encontrada.")
+        print(f"Operação de busca realizada em {time.time() - start_time} segundos")
+    elif opcao == 5:
+        add_entry()
+        hash_index = build_hash_index(FILE_PATH, STRUCT_FORMAT, 5000001)
+    elif opcao == 0:
+        break
